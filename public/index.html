@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>校园争霸赛 v18.0</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div id="game-over-overlay">
+        <div style="font-size: 80px; margin-bottom: 10px;">🏆</div>
+        <h1 style="color:gold; font-size: 56px; margin: 0 0 10px 0; text-shadow: 0 0 15px gold;">比赛结束</h1>
+        <h2 id="winner-text" style="color:white; font-size: 32px; margin: 0; text-shadow: 2px 2px 5px #000;"></h2>
+        <p style="color:#bdc3c7; margin-top: 30px; font-size: 18px;">(请房主重新刷新网页开启下一局)</p>
+    </div>
+
+    <div id="codex-modal">
+        <div class="codex-content">
+            <div class="codex-header">
+                <span>📖 角色图鉴</span>
+                <div class="close-btn" onclick="document.getElementById('codex-modal').style.display='none'">关闭</div>
+            </div>
+            <div class="role-list" id="codex-role-list"></div>
+            <div class="role-details" id="codex-details">
+                <span style="color:#bdc3c7">点击上方头像查看角色数值和专属技能。</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="main-layout">
+        <div class="left-panel" id="avatar-panel">
+            <button id="btn-codex" class="btn" style="background:#8e44ad; width:100%; padding: 10px; font-size:16px;">📖 图鉴</button>
+            <div id="player-avatar"></div>
+            <div id="player-avatar-name"></div>
+        </div>
+        
+        <div class="game-area">
+            <div id="buff-container"></div>
+            <div id="mission-bar"></div>
+            <div id="side-quest-bar"></div>
+            
+            <div class="top-bar">
+                <div>
+                    <div id="role-name">未选择角色</div>
+                    <div id="role-stats" style="font-size: 0.8em; color: #ccc;">请在右侧选择加入游戏</div>
+                </div>
+                <div style="display:flex; align-items:center;">
+                    <div id="weather-badge" class="w-none">早晨</div>
+                    <div id="status-text" style="margin: 0 10px; font-size: 14px;">等待加入...</div>
+                    <button id="horse-btn" class="btn hidden" style="background:#e67e22;">🐴 牵马</button>
+                    <button id="pray-btn" class="btn hidden" style="background:#f1c40f; color:black;">⛪ 祈祷</button>
+                    <button id="ability-btn" class="btn hidden" style="background:#f368e0">🌟 召唤</button>
+                    <button id="trap-btn" class="btn hidden" style="background:#8e44ad">陷阱</button>
+                    <button id="control-btn" class="btn hidden" style="background:#9b59b6">🔮 操控</button>
+                    <button id="roll-btn" class="btn btn-act hidden">掷骰子</button>
+                    <button id="end-btn" class="btn btn-end hidden">结束回合</button>
+                </div>
+            </div>
+            
+            <canvas id="gameCanvas" width="640" height="640"></canvas>
+            
+            <div id="target-overlay"></div>
+            <div id="shop-area"></div>
+            
+            <div class="inventory-panel">
+                <div style="font-size:14px;">🎒</div>
+                <div id="inv-container" style="display:flex; gap:5px;"></div>
+                <div id="target-tip" style="margin-left:auto; font-size:12px; color:yellow; display:none;">👈 点击道具攻击</div>
+            </div>
+            
+            <div class="dpad-container" id="dpad-container" style="display:none;">
+                <div class="dpad-btn" id="btn-up">▲</div>
+                <div class="dpad-row">
+                    <div class="dpad-btn" id="btn-left">◀</div>
+                    <div class="dpad-btn" id="btn-down">▼</div>
+                    <div class="dpad-btn" id="btn-right">▶</div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="log-panel">
+            <div style="text-align:center; border-bottom:1px solid #aaa; margin-bottom:5px;">日志</div>
+            <div id="game-logs"></div>
+            
+            <div id="lobby-settings" style="margin-top: 10px; padding: 10px; background: rgba(0,0,0,0.3); border-radius: 5px; text-align: center;">
+                <div style="font-size:13px; margin-bottom:5px; color: gold; font-weight: bold;">🏆 获胜目标设定</div>
+                <div style="font-size:12px; margin-bottom:5px;">当前目标: <span id="current-target-score" style="color:#2ecc71;">无限制</span></div>
+                <input type="number" id="target-score-input" placeholder="分数(例:300)" style="width:70px; padding:3px; background:#2c3e50; border:1px solid #aaa; color:white; border-radius:3px;">
+                <button id="btn-set-score" class="btn" style="background:#27ae60; font-size:12px; padding: 4px 8px;">设定</button>
+            </div>
+
+            <div id="role-selection">
+                <div style="text-align:center; font-weight:bold; font-size:14px; margin-top:5px;">选择角色加入游戏</div>
+                <div id="role-buttons-container" style="display:flex; flex-direction:column; gap:5px; max-height: 200px; overflow-y:auto; margin-top:5px;"></div>
+                <div style="margin-top: 10px; padding: 10px; background: rgba(0,0,0,0.3); border-radius: 5px; text-align: center;">
+                    <input type="password" id="dev-code" placeholder="输入密钥" style="width:80px; padding:3px; background:#2c3e50; border:1px solid #aaa; color:white; border-radius:3px;">
+                    <button id="btn-unlock-dev" class="btn" style="background:#e67e22;">验证</button>
+                    <div id="dev-controls" style="display:none; margin-top:10px;">
+                        <span style="color:gold; font-size:12px;">🛠️ 斗蛐蛐模式已解锁</span><br>
+                        <span style="font-size:12px;">AI数量:</span> 
+                        <input type="number" id="bot-count" value="4" min="1" max="10" style="width:40px; background:#2c3e50; color:white; border:1px solid #aaa; padding:2px; border-radius:3px;">
+                        <button id="btn-start-auto" class="btn" style="background:#c0392b; margin-top:5px; width:100%;">🚀 开始挂机</button>
+                    </div>
+                </div>
+            </div>
+            
+            <div id="spectator-scoreboard" style="display:none; margin-top:15px; border-top: 1px solid #aaa; padding-top: 10px;">
+                <div style="text-align:center; font-weight:bold; color: gold; margin-bottom: 5px;">🏆 实时积分榜</div>
+                <div id="scoreboard-list" style="display:flex; flex-direction:column; gap:5px; font-size: 12px;"></div>
+            </div>
+        </div>
+    </div>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="js/globals.js"></script>
+    <script src="js/network.js"></script>
+    <script src="js/ui.js"></script>
+    <script src="js/render.js"></script>
+</body>
+</html>

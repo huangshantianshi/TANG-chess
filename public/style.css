@@ -1,0 +1,81 @@
+/* public/style.css - 全局样式表 */
+body { 
+    background: #2c3e50; 
+    color: white; 
+    font-family: 'Segoe UI', sans-serif; 
+    display: flex; 
+    justify-content: center; 
+    height: 100vh; 
+    margin: 0; 
+    overflow: hidden; 
+}
+
+.main-layout { display: flex; gap: 20px; margin-top: 20px; align-items: flex-start; }
+.left-panel { width: 120px; display: flex; flex-direction: column; align-items: center; gap: 15px; margin-top: 50px; }
+
+#player-avatar { 
+    width: 100px; 
+    height: 100px; 
+    background-color: white; 
+    border-radius: 10px; 
+    border: 3px solid #ccc; 
+    background-size: cover; 
+    background-position: center; 
+    display: none; 
+}
+#player-avatar-name { font-weight: bold; font-size: 16px; text-align: center; }
+
+.game-area { display: flex; flex-direction: column; align-items: center; position: relative; }
+canvas { background: #ecf0f1; box-shadow: 0 0 20px rgba(0,0,0,0.5); border-radius: 4px; cursor: default; }
+
+#buff-container { position: absolute; left: -60px; top: 100px; width: 50px; display: flex; flex-direction: column; gap: 10px; }
+.buff-icon { width: 50px; height: 50px; background: rgba(0,0,0,0.5); border-radius: 5px; display: flex; justify-content: center; align-items: center; font-size: 24px; border: 2px solid gold; box-shadow: 0 0 10px gold; }
+
+.top-bar { width: 640px; background: #34495e; padding: 10px; border-radius: 5px; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center; }
+#mission-bar, #side-quest-bar { width: 640px; padding: 8px; border-radius: 4px; margin-bottom: 5px; text-align: center; font-weight: bold; font-size: 14px; display: none; }
+#mission-bar { background: #e74c3c; } 
+#side-quest-bar { background: #8e44ad; }
+
+#target-overlay { position: absolute; top: 100px; left: 0; width: 640px; height: 640px; pointer-events: none; display: none; }
+.target-indicator { position: absolute; width: 32px; height: 32px; border: 2px solid red; background: rgba(255,0,0,0.3); cursor: pointer; pointer-events: auto; animation: pulse 1s infinite; }
+.control-indicator { border-color: #9b59b6; background: rgba(155, 89, 182, 0.3); } 
+
+.inventory-panel { width: 640px; background: #2980b9; padding: 10px; border-radius: 5px; margin-top: 10px; display: flex; gap: 10px; align-items: center; }
+.inv-slot { width: 50px; height: 50px; background: rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.3); display: flex; justify-content: center; align-items: center; cursor: pointer; position: relative; }
+.inv-count { position: absolute; bottom: 0; right: 2px; font-size: 10px; }
+#shop-area { margin-top: 5px; min-height: 30px; display: flex; gap: 10px; justify-content: center; width: 640px; }
+
+.log-panel { width: 250px; height: 750px; background: #34495e; padding: 10px; display: flex; flex-direction: column; }
+#game-logs { flex: 1; overflow-y: auto; font-size: 12px; }
+.log-item { margin-bottom: 3px; padding: 2px; background: rgba(0,0,0,0.2); }
+
+#role-selection { border-top: 1px solid #aaa; padding-top: 10px; margin-top: 10px; display: flex; flex-direction: column; gap: 8px; }
+.role-btn { padding: 8px; background: #2c3e50; border: 1px solid #aaa; color: white; cursor: pointer; text-align: left; border-radius: 4px; }
+.role-btn:hover { background: #34495e; }
+.role-btn:disabled { background: #7f8c8d; color: #bdc3c7; cursor: not-allowed; text-decoration: line-through; }
+
+.btn { padding: 5px 10px; border: none; cursor: pointer; border-radius: 3px; color: white; font-weight: bold; margin-left: 5px; }
+.btn-act { background: #e67e22; } .btn-end { background: #c0392b; } .btn-buy { background: #27ae60; }
+.hidden { display: none !important; }
+
+#weather-badge { padding: 4px 8px; border-radius: 3px; font-size: 12px; }
+.w-heat { background: #e74c3c; } .w-cold { background: #3498db; } .w-none { background: #7f8c8d; }
+
+.dpad-container { margin-top: 15px; display: flex; flex-direction: column; align-items: center; gap: 5px; }
+.dpad-row { display: flex; gap: 5px; }
+.dpad-btn { width: 55px; height: 55px; background: #34495e; border: 2px solid #1a252f; color: white; font-size: 24px; border-radius: 10px; cursor: pointer; user-select: none; touch-action: manipulation; box-shadow: 0 4px #1a252f; transition: transform 0.1s, box-shadow 0.1s; display: flex; justify-content: center; align-items: center; }
+.dpad-btn:active { background: #e67e22; box-shadow: 0 0 #1a252f; transform: translateY(4px); }
+
+#codex-modal { display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.8); z-index: 1000; justify-content:center; align-items:center; }
+.codex-content { background:#34495e; padding:20px; border-radius:10px; width:500px; display:flex; flex-direction:column; gap:15px; border:2px solid #ecf0f1; box-shadow: 0 0 30px black;}
+.codex-header { display:flex; justify-content:space-between; align-items:center; font-size:20px; font-weight:bold; }
+.close-btn { cursor:pointer; background:#c0392b; padding:5px 15px; border-radius:5px; color:white; font-size:14px;}
+
+.role-list { display:flex; flex-wrap:wrap; gap:12px; justify-content:center;}
+.role-icon { width:65px; height:65px; border-radius:10px; border:2px solid #bdc3c7; cursor:pointer; background-size:cover; background-position:center; display:flex; justify-content:center; align-items:center; font-size:14px; font-weight:bold; color:black; text-shadow: 1px 1px 0px white; transition: 0.2s;}
+.role-icon:hover { transform: scale(1.1); border-color: gold; }
+.role-details { background:#2c3e50; padding:15px; border-radius:5px; min-height:100px; font-size: 14px;}
+
+@keyframes pulse { 0% { opacity: 0.5; } 50% { opacity: 1; } 100% { opacity: 0.5; } }
+
+#game-over-overlay { display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.9); z-index: 2000; justify-content:center; align-items:center; flex-direction:column; }
