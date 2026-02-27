@@ -16,6 +16,7 @@ EN: Clone this repository to your local machine, or download and extract the ZIP
 Bash
 git clone https://github.com/huangshantianshi/TANG-chess.git
 cd TANG-chess
+
 3. 安装依赖 / Install Dependencies
 
 CN: 在项目根目录下打开终端 / 命令行，运行以下命令来安装所有的第三方库（这会自动生成 node_modules 文件夹）：
@@ -24,6 +25,7 @@ EN: Open your terminal in the project root directory and run the following comma
 
 Bash
 npm install
+
 4. 配置私密头像（可选） / Configure Private Avatars (Optional)
 
 CN: 由于本项目内置了隐私保护机制，角色头像并未上传至 GitHub。如果不配置，游戏内将默认显示角色名字首字母。如果想显示图片，请在项目根目录下手动创建一个名为 private_assets 的文件夹，并将图片（如 xsm.png, cyx_1.png）放入其中。在游戏中点击“解锁头像”并输入你的专属密钥即可。
