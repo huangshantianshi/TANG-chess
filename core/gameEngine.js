@@ -1,11 +1,7 @@
-// core/gameEngine.js - v26.0: 加入“内卷压力”被迫进化机制
-const ROLES = require('../data/roles');
-const ITEMS = require('../data/items');
-const ZONES = require('../data/zones');
-const MANUAL = require('../data/manual');
+// core/gameEngine.js - v26.1: 单机 PVE 融合模式支持
+const ROLES = require('../data/roles'); const ITEMS = require('../data/items'); const ZONES = require('../data/zones'); const MANUAL = require('../data/manual');
 
-let io; 
-const GRID_SIZE = 20;
+let io; const GRID_SIZE = 20;
 
 let players = {}; let playerIds = []; let traps = []; let plantedSeeds = []; let groundItems = [];
 let currentTurnIndex = 0; let turnPhase = 'WAITING'; let TIME_PHASES = ['早晨', '早晨', '正午', '下午', '下午', '傍晚', '午夜'];
@@ -21,39 +17,49 @@ function isSafeZone(x, y) { let z = getZoneKey(x, y); return z && (z.includes('d
 function isMyTurn(id) { return playerIds[currentTurnIndex] === id; }
 
 function resetGameState() {
-    players = {}; playerIds = []; traps = []; plantedSeeds = []; groundItems = [];
-    currentTurnIndex = 0; turnPhase = 'WAITING'; globalRound = 1; dayCount = 1; dayPhaseIndex = 0;
-    weatherEffect = null; classMission = null; activeSideQuests = [];
-    activeGlobalEvents = { invisible: 0, boarsRound: 0, sandstorm: 0, flood: 0 };
-    boars = []; guards = []; waterWalls = []; isAutoRun = false;
-    if (autoPlayInterval) { clearInterval(autoPlayInterval); autoPlayInterval = null; }
-    gameOver = false; winner = null;
+    players = {}; playerIds = []; traps = []; plantedSeeds = []; groundItems = []; currentTurnIndex = 0; turnPhase = 'WAITING'; globalRound = 1; dayCount = 1; dayPhaseIndex = 0; weatherEffect = null; classMission = null; activeSideQuests = []; activeGlobalEvents = { invisible: 0, boarsRound: 0, sandstorm: 0, flood: 0 }; boars = []; guards = []; waterWalls = []; isAutoRun = false; if (autoPlayInterval) { clearInterval(autoPlayInterval); autoPlayInterval = null; } gameOver = false; winner = null;
 }
 
 function init(socketIoInstance) { io = socketIoInstance; }
 
 function onPlayerConnect(socket) {
-    socket.emit('initData', { zones: ZONES, items: ITEMS, mapImage: 'map_bg.jpg', roles: ROLES, manual: MANUAL }); 
-    broadcastState();
-    
+    socket.emit('initData', { zones: ZONES, items: ITEMS, mapImage: 'map_bg.jpg', roles: ROLES, manual: MANUAL }); broadcastState();
     socket.on('restartGame', () => { resetGameState(); io.emit('gameLog', `🔄 游戏已被强制重置，所有人进度清空，请重新选择角色！`); broadcastState(); });
     socket.on('chatMessage', (text) => { if (!players[socket.id] || typeof text !== 'string') return; let p = players[socket.id]; let safeText = text.trim().substring(0, 150); if (safeText) { io.emit('chatMessage', { role: p.role, name: p.name, color: p.color, text: safeText }); } });
     socket.on('setTargetScore', (score) => { let s = parseInt(score); if (!isNaN(s) && s > 0) { targetScore = s; io.emit('gameLog', `🏆 获胜目标分数已被设定为：${s} 分！`); broadcastState(); } });
 
-    socket.on('startAutoRun', (data) => {
-        if (data.code !== '114514') return; resetGameState(); isAutoRun = true; targetScore = targetScore || 300; 
-        let count = data.count || 4; const roleKeys = Object.keys(ROLES).filter(k=>k!=='zjy');
-        for (let i = 0; i < count; i++) {
-            let rKey = roleKeys[i % roleKeys.length]; let r = ROLES[rKey]; let sx, sy; while(true) { sx = Math.floor(Math.random()*GRID_SIZE); sy = Math.floor(Math.random()*GRID_SIZE); if (!getZoneKey(sx, sy)) break; }
-            let botId = 'BOT_' + i;
+    // === 核心修改：无缝插入 AI 的单机模式接口 ===
+    socket.on('addBots', (count) => {
+        if (gameOver) return;
+        let c = parseInt(count) || 3;
+        // 过滤掉不可选角色（zjy）和已经被真人选走的角色
+        const roleKeys = Object.keys(ROLES).filter(k => k !== 'zjy' && !Object.values(players).some(p => p.role === k));
+        
+        let added = 0;
+        for (let i = 0; i < c; i++) {
+            if (roleKeys.length === 0) break; // 角色池被抽空了
+            let rKey = roleKeys.splice(Math.floor(Math.random() * roleKeys.length), 1)[0]; 
+            let r = ROLES[rKey]; 
+            let sx, sy; while(true) { sx = Math.floor(Math.random()*GRID_SIZE); sy = Math.floor(Math.random()*GRID_SIZE); if (!getZoneKey(sx, sy)) break; }
+            let botId = 'BOT_' + Math.random().toString(36).substr(2, 5);
+            
             players[botId] = { x: sx, y: sy, playerId: botId, role: rKey, name: r.name.split(' ')[0]+'(AI)', gender: r.gender, str: r.str, int: r.int, color: r.color, score: 50, movesLeft: 0, lastRoll: 0, isJailed: false, isTrapped: false, inventory: {}, buffs: [], questProgress: { visitedStables: [], fruitCount: 0 }, isControlling: null, isBot: true, activeEntity: 'self', movedThisTurn: false, horseBuff: false, minRoll: 1, flashlightRounds: 0, drinksUsedThisTurn: 0, cyxForm: 1, cyxExtraTurns: 2, eggReady: false };
-            playerIds.push(botId); if (rKey === 'ynq') initYnqBlocks(botId);
+            playerIds.push(botId); 
+            if (rKey === 'ynq') initYnqBlocks(botId);
+            added++;
         }
-        io.emit('gameLog', `🤖 斗蛐蛐模拟器启动！`); broadcastState(); if (autoPlayInterval) clearInterval(autoPlayInterval); autoPlayInterval = setInterval(botLogicTick, 500);
+        
+        isAutoRun = true; 
+        if (autoPlayInterval) clearInterval(autoPlayInterval); 
+        // 稍微放慢心跳速度(800ms)，让你能看清 AI 的动作，否则瞬间闪现
+        autoPlayInterval = setInterval(botLogicTick, 800); 
+        
+        io.emit('gameLog', `🤖 成功加入了 ${added} 名 AI 玩家！PVE 单机模式启动！`); 
+        broadcastState(); 
     });
 
     socket.on('selectRole', (roleKey) => {
-        if (isAutoRun || !ROLES[roleKey] || Object.values(players).some(p => p.role === roleKey) || players[socket.id]) return; 
+        if (!ROLES[roleKey] || Object.values(players).some(p => p.role === roleKey) || players[socket.id]) return; 
         let r = ROLES[roleKey]; let sx, sy; while(true) { sx = Math.floor(Math.random()*GRID_SIZE); sy = Math.floor(Math.random()*GRID_SIZE); if (!getZoneKey(sx, sy)) break; }
         players[socket.id] = { x: sx, y: sy, playerId: socket.id, role: roleKey, name: r.name, gender: r.gender, str: r.str, int: r.int, color: r.color, score: 50, movesLeft: 0, lastRoll: 0, isJailed: false, isTrapped: false, inventory: {}, buffs: [], questProgress: { visitedStables: [], fruitCount: 0 }, isControlling: null, isBot: false, activeEntity: 'self', movedThisTurn: false, horseBuff: false, minRoll: 1, flashlightRounds: 0, drinksUsedThisTurn: 0, cyxForm: 1, cyxExtraTurns: 2, eggReady: false };
         playerIds.push(socket.id); io.emit('gameLog', `✨ ${r.name} 降临了校园！`); if (roleKey === 'ynq') initYnqBlocks(socket.id); broadcastState();
@@ -63,52 +69,8 @@ function onPlayerConnect(socket) {
     socket.on('buyItem', (itemId) => { if (gameOver || !isMyTurn(socket.id)) return; const p = players[socket.id]; if (!ZONES[getZoneKey(p.x, p.y)]?.shop?.includes(itemId) || p.score < ITEMS[itemId].cost) return; if (giveItem(p, itemId)) { p.score -= ITEMS[itemId].cost; io.emit('gameLog', `🛒 ${p.name} 购买了 [${ITEMS[itemId].name}]`); broadcastState(); } else { socket.emit('gameLog', '❌ 堆叠上限或背包已满！'); } });
     socket.on('makeWish', () => { if (gameOver || !isMyTurn(socket.id)) return; const p = getRealPlayer(players[socket.id]); if (getZoneKey(p.x, p.y) !== 'fountain' || p.score < 5) return; p.score -= 5; let r = Math.random(); if (r < 0.1) { giveItem(p, 'cheat_sheet'); io.emit('gameLog', `⛲ ${p.name} 许愿获得 [作弊小抄]！`); } else if (r < 0.3) { giveItem(p, 'water'); io.emit('gameLog', `⛲ ${p.name} 许愿获得 [冰水]！`); } else if (r < 0.31) { p.score += 50; io.emit('gameLog', `⛲ 奇迹！${p.name} 许愿获得了 50 积分！`); } else { io.emit('gameLog', `⛲ 喷泉冒泡：感谢游玩此游戏！`); } broadcastState(); });
     
-    // === 核心修改：自愿进化播报更新 ===
-    socket.on('cyxEvolve', () => {
-        if (gameOver || !isMyTurn(socket.id) || turnPhase !== 'WAITING') return;
-        let p = players[socket.id];
-        if (!p || p.role !== 'cyx') return;
-
-        let oldName = p.name.split(' ')[0];
-        if (p.cyxForm === 1 && p.score >= 125) {
-            p.cyxForm = 2; p.str = 5; p.int = 3; p.score += 20;
-            p.name = oldName + ' (黄鳝天师)';
-            p.cyxExtraTurns = 0; 
-            io.emit('gameLog', `✨ ${oldName}长大了，成为了“黄鳝天师”！(奖励20分)`);
-            broadcastState();
-        } else if (p.cyxForm === 2 && p.score >= 225) {
-            p.cyxForm = 3; p.str = 3; p.int = 4; p.score += 20;
-            p.name = oldName + ' (荷包蛋)';
-            p.eggReady = false; 
-            io.emit('gameLog', `🍳 ${oldName}长大了，成为了“荷包蛋”！(奖励20分)`);
-            broadcastState();
-        }
-    });
-
-    socket.on('cyxTeleport', (targetId) => {
-        if (gameOver || !isMyTurn(socket.id) || turnPhase !== 'WAITING') return;
-        let p = players[socket.id];
-        if (p.role !== 'cyx' || p.cyxForm !== 2 || p.score < 15) return;
-        let target = players[targetId]; if (!target) return;
-        
-        let validSpots = [];
-        for (let dx=-1; dx<=1; dx++) {
-            for (let dy=-1; dy<=1; dy++) {
-                if (dx===0 && dy===0) continue; 
-                let nx = target.x + dx, ny = target.y + dy;
-                if (nx>=0 && nx<GRID_SIZE && ny>=0 && ny<GRID_SIZE && !isInvalidBoarZone(nx, ny)) {
-                    validSpots.push({x: nx, y: ny});
-                }
-            }
-        }
-        if (validSpots.length === 0) { socket.emit('gameLog', '❌ 目标周围拥挤，无法传送！'); return; }
-        
-        let spot = validSpots[Math.floor(Math.random() * validSpots.length)];
-        p.score -= 15; p.x = spot.x; p.y = spot.y;
-        io.emit('gameLog', `🐍 遁地之术！${p.name} 消耗15分瞬间出现在了 ${target.name} 身旁！`);
-        broadcastState();
-    });
-
+    socket.on('cyxEvolve', () => { if (gameOver || !isMyTurn(socket.id) || turnPhase !== 'WAITING') return; let p = players[socket.id]; if (!p || p.role !== 'cyx') return; let oldName = p.name.split(' ')[0]; if (p.cyxForm === 1 && p.score >= 125) { p.cyxForm = 2; p.str = 5; p.int = 3; p.score += 20; p.name = oldName + ' (黄鳝天师)'; p.cyxExtraTurns = 0; io.emit('gameLog', `✨ ${oldName}长大了，成为了“黄鳝天师”！(奖励20分)`); broadcastState(); } else if (p.cyxForm === 2 && p.score >= 225) { p.cyxForm = 3; p.str = 3; p.int = 4; p.score += 20; p.name = oldName + ' (荷包蛋)'; p.eggReady = false; io.emit('gameLog', `🍳 ${oldName}长大了，成为了“荷包蛋”！(奖励20分)`); broadcastState(); } });
+    socket.on('cyxTeleport', (targetId) => { if (gameOver || !isMyTurn(socket.id) || turnPhase !== 'WAITING') return; let p = players[socket.id]; if (p.role !== 'cyx' || p.cyxForm !== 2 || p.score < 15) return; let target = players[targetId]; if (!target) return; let validSpots = []; for (let dx=-1; dx<=1; dx++) { for (let dy=-1; dy<=1; dy++) { if (dx===0 && dy===0) continue; let nx = target.x + dx, ny = target.y + dy; if (nx>=0 && nx<GRID_SIZE && ny>=0 && ny<GRID_SIZE && !isInvalidBoarZone(nx, ny)) { validSpots.push({x: nx, y: ny}); } } } if (validSpots.length === 0) { socket.emit('gameLog', '❌ 目标周围拥挤，无法传送！'); return; } let spot = validSpots[Math.floor(Math.random() * validSpots.length)]; p.score -= 15; p.x = spot.x; p.y = spot.y; io.emit('gameLog', `🐍 遁地之术！${p.name} 消耗15分瞬间出现在了 ${target.name} 身旁！`); broadcastState(); });
     socket.on('useAbility', () => { if (gameOver || !isMyTurn(socket.id)) return; const p = players[socket.id]; if (p.role !== 'jzx' || p.zjyId || p.score < 25) return; let cost = Math.max(25, Math.floor(p.score / 2)); p.score -= cost; let zjyId = 'ZJY_' + socket.id; players[zjyId] = { x: p.x, y: p.y, playerId: zjyId, role: 'zjy', name: 'zjy(召唤物)', gender: 'female', str: 3, int: 3, color: '#ff9ff3', score: 0, movesLeft: 0, lastRoll: 0, isJailed: false, isTrapped: false, inventory: p.inventory, buffs: p.buffs, questProgress: p.questProgress, isControlling: null, isBot: false, isSummon: true, ownerId: socket.id, createRound: globalRound, refundAmount: Math.floor(cost / 2), movedThisTurn: false, horseBuff: false, minRoll: 1, flashlightRounds: 0, drinksUsedThisTurn: 0 }; p.zjyId = zjyId; io.emit('gameLog', `🌟 魔法闪耀！${p.name} 献祭 ${cost} 分，召唤了 [zjy]！`); broadcastState(); });
     socket.on('pray', () => { if (gameOver || !isMyTurn(socket.id) || turnPhase !== 'MOVING') return; let c = players[socket.id]; let m = c.activeEntity === 'zjy' ? players[c.zjyId] : (c.role === 'lds' && c.isControlling ? players[c.isControlling] || c : c); let spender = (c.role === 'lds' && c.isControlling) ? c : m; if (getZoneKey(m.x, m.y) !== 'church' || spender.movesLeft <= 0) return; let rp = getRealPlayer(m); let earn = spender.movesLeft * 3; rp.score += earn; io.emit('gameLog', `⛪ ${m.name} 虔诚祈祷，将 ${spender.movesLeft} 步转化为 ${earn} 积分！`); spender.movesLeft = 0; broadcastState(); });
     socket.on('getHorse', () => { if (gameOver || !isMyTurn(socket.id) || turnPhase !== 'MOVING') return; let c = players[socket.id]; let m = c.activeEntity === 'zjy' ? players[c.zjyId] : (c.role === 'lds' && c.isControlling ? players[c.isControlling] || c : c); let spender = (c.role === 'lds' && c.isControlling) ? c : m; if (getZoneKey(m.x, m.y) !== 'stables' || spender.movesLeft <= 0 || m.movedThisTurn) return; if (giveItem(m, 'horse')) { io.emit('gameLog', `🐴 ${m.name} 消耗剩余步数，牵走了一匹马！`); spender.movesLeft = 0; broadcastState(); } else socket.emit('gameLog', '❌ 背包满'); });
@@ -189,16 +151,13 @@ function doRollDice(playerId) {
 
     let val = Math.floor(Math.random() * 6) + 1; 
     let z = getZoneKey(p.x, p.y); let phase = TIME_PHASES[dayPhaseIndex];
-    
-    if (p.role === 'cyx' && p.cyxForm === 1) { val = Math.floor(Math.random() * 3) + 1; }
-
+    if (p.role === 'cyx' && p.cyxForm === 1) { val = Math.floor(Math.random() * 2) + 1; }
     if (p.horseBuff) { val = Math.floor(Math.random() * 7) + 3; p.horseBuff = false; }
     val = Math.max(p.minRoll || 1, val); 
     
     if (p.role === 'yyj' && z && z.includes('playground')) val += 2;
     if (p.role === 'wt' && (val === 5 || val === 6)) { if (giveItem(p, 'bicycle')) io.emit('gameLog', `🎉 车神获得 [自行车]！`); }
     if (p.role === 'lds' && p.isControlling && val > 4) val = 4;
-    
     if (z && z.includes('dorm')) { val += 1; io.emit('gameLog', `🛏️ 寝室休息充沛，${p.name} 掷骰点数额外 +1！`); }
 
     let corey = Object.values(players).find(pl => pl.role === 'corey');
@@ -237,15 +196,274 @@ function doMove(playerId, axis, dir) {
     checkTraps(mover); checkSeeds(mover); checkGroundItems(mover); checkQuestProgress(mover); broadcastState(); return true; 
 }
 
+
+// === 核心：拥有“地狱级老六思维”与“主动技能释放”的 AI 完全体大脑 ===
+// === 核心：拥有“地狱级老六思维”、“主动技能释放”与“支线任务/叛逆追踪”的 AI 终极完全体 ===
 function botLogicTick() {
-    if (!isAutoRun || playerIds.length === 0 || gameOver) return; let cid = playerIds[currentTurnIndex]; let p = players[cid]; if (!p || !p.isBot) return;
-    if (turnPhase === 'WAITING') { doRollDice(cid); } 
+    if (!isAutoRun || playerIds.length === 0 || gameOver) return; 
+    let cid = playerIds[currentTurnIndex]; 
+    let p = players[cid]; 
+    
+    // 如果是真人或被操控状态，挂起等待
+    if (!p || !p.isBot || p.isControlling) return; 
+    let rp = getRealPlayer(p);
+
+    if (turnPhase === 'WAITING') { 
+        // 🤖 思考 1：CYX 自动进化
+        if (p.role === 'cyx') {
+            let oldName = p.name.split(' ')[0];
+            if (p.cyxForm === 1 && p.score >= 125) {
+                p.cyxForm = 2; p.str = 5; p.int = 3; p.score += 20; p.name = oldName + ' (黄鳝天师)'; p.cyxExtraTurns = 0;
+                io.emit('gameLog', `✨ AI ${oldName} 自动进化为“黄鳝天师”！`); broadcastState();
+            } else if (p.cyxForm === 2 && p.score >= 225) {
+                p.cyxForm = 3; p.str = 3; p.int = 4; p.score += 20; p.name = oldName + ' (荷包蛋)'; p.eggReady = false;
+                io.emit('gameLog', `🍳 AI ${oldName} 自动进化为“荷包蛋”！`); broadcastState();
+            }
+        }
+
+        // 🤖 思考 2：专属主动技能释放！(JZX, LDS, CYX二阶)
+        if (p.role === 'jzx' && !p.zjyId && p.score >= 40 && Math.random() < 0.6) {
+            let cost = Math.max(25, Math.floor(p.score / 2)); p.score -= cost; 
+            let zjyId = 'ZJY_' + cid; 
+            players[zjyId] = { x: p.x, y: p.y, playerId: zjyId, role: 'zjy', name: 'zjy(AI召唤)', gender: 'female', str: 3, int: 3, color: '#ff9ff3', score: 0, movesLeft: 0, lastRoll: 0, isJailed: false, isTrapped: false, inventory: p.inventory, buffs: p.buffs, questProgress: p.questProgress, isControlling: null, isBot: true, isSummon: true, ownerId: cid, createRound: globalRound, refundAmount: Math.floor(cost / 2), movedThisTurn: false, horseBuff: false, minRoll: 1, flashlightRounds: 0, drinksUsedThisTurn: 0 }; 
+            p.zjyId = zjyId; 
+            io.emit('gameLog', `🌟 魔法闪耀！AI ${p.name} 献祭 ${cost} 分，召唤了 [zjy] 帮自己跑腿！`); 
+            broadcastState();
+        }
+        
+        if (p.role === 'lds' && getZoneKey(p.x, p.y)?.includes('dorm') && !p.isControlling && Math.random() < 0.7) {
+            let potentialTargets = Object.values(players).filter(t => t.playerId !== cid && !t.isSummon && !t.isJailed);
+            if (potentialTargets.length > 0) {
+                let target = potentialTargets[Math.floor(Math.random() * potentialTargets.length)];
+                p.isControlling = target.playerId;
+                io.emit('gameLog', `🔮 细思极恐！躲在寝室的 AI ${p.name} 远距离强行操控了 ${target.name} 的身体！`);
+                broadcastState();
+            }
+        }
+
+        if (p.role === 'cyx' && p.cyxForm === 2 && p.score >= 30 && Math.random() < 0.5) {
+            let target = Object.values(players).find(t => t.playerId !== cid && !t.isSummon && t.str < p.str); 
+            if (target) {
+                let validSpots = []; 
+                for (let dx=-1; dx<=1; dx++) { for (let dy=-1; dy<=1; dy++) { 
+                    if (dx===0 && dy===0) continue; 
+                    let nx = target.x + dx, ny = target.y + dy; 
+                    if (nx>=0 && nx<GRID_SIZE && ny>=0 && ny<GRID_SIZE && !isInvalidBoarZone(nx, ny)) validSpots.push({x: nx, y: ny}); 
+                } }
+                if (validSpots.length > 0) {
+                    let spot = validSpots[Math.floor(Math.random() * validSpots.length)]; 
+                    p.score -= 15; p.x = spot.x; p.y = spot.y; 
+                    io.emit('gameLog', `🐍 遁地之术！AI ${p.name} 消耗15分瞬间闪现到了 ${target.name} 身旁准备打劫！`); 
+                    broadcastState();
+                }
+            }
+        }
+
+        // 🤖 思考 3：老六偷偷放陷阱 (专属 xsm)
+        if (p.role === 'xsm' && p.score >= 20 && Math.random() < 0.3 && !traps.find(t => t.x===p.x && t.y===p.y)) {
+            p.score -= 10; traps.push({ x: p.x, y: p.y, ownerId: cid });
+            io.emit('gameLog', `🤫 AI ${p.name} 悄悄在脚下埋设了陷阱...`); broadcastState();
+        }
+
+        // 🤖 思考 4：天气预警与自我保护
+        if (weatherEffect === 'HEAT' && rp.inventory['water'] && !p.buffs.includes('immune_heat')) {
+            rp.inventory['water']--; if (rp.inventory['water'] <= 0) delete rp.inventory['water'];
+            p.buffs.push('immune_heat'); io.emit('gameLog', `🧊 AI ${p.name} 吨吨吨喝下冰水，免疫炎热！`);
+        }
+        if (weatherEffect === 'COLD' && rp.inventory['warmer'] && !p.buffs.includes('immune_cold')) {
+            rp.inventory['warmer']--; if (rp.inventory['warmer'] <= 0) delete rp.inventory['warmer'];
+            p.buffs.push('immune_cold'); io.emit('gameLog', `🔥 AI ${p.name} 贴上了暖宝宝，免疫寒冷！`);
+        }
+
+        // 🤖 思考 5：使用攻击/偷窃/举报道具
+        for (let itemId in rp.inventory) {
+            let item = ITEMS[itemId];
+            if (!item) continue;
+            
+            if (item.type === 'attack' || item.type === 'steal' || item.type === 'report') {
+                let target = Object.values(players).find(t => t.playerId !== cid && !t.isSummon && (Math.abs(t.x - p.x) + Math.abs(t.y - p.y) <= item.range));
+                
+                if (target) {
+                    if (item.type === 'attack') {
+                        target.score = Math.max(0, target.score - item.dmg);
+                        io.emit('gameLog', `💥 老六预警！AI ${p.name} 突然掏出 [${item.name}] 砸向了 ${target.name}！`);
+                    } else if (item.type === 'steal' && target.gender === 'male' && target.score > 0) {
+                        let stealVal = Math.min(target.score, item.stealAmount);
+                        target.score -= stealVal; rp.score += stealVal;
+                        io.emit('gameLog', `💋 防不胜防！AI ${p.name} 对 ${target.name} 使用了 [${item.name}]，偷走 ${stealVal} 分！`);
+                    } else if (item.type === 'report' && target.score > rp.score) {
+                        target.x = 9; target.y = 1; target.isJailed = true; target.score = Math.max(0, target.score - 30);
+                        io.emit('gameLog', `🚨 铁面无私！AI ${p.name} 提交举报信！${target.name} 被关禁闭并扣30分！`);
+                    } else {
+                        continue; 
+                    }
+                    rp.inventory[itemId]--; if (rp.inventory[itemId] <= 0) delete rp.inventory[itemId];
+                    broadcastState(); break; 
+                }
+            }
+        }
+
+        doRollDice(cid); 
+    } 
     else if (turnPhase === 'MOVING') {
         if (p.movesLeft <= 0) { handleCombat(p); handleTileEvent(p); endTurn(); return; }
-        if (getZoneKey(p.x, p.y) === 'church' && Math.random() < 0.5) { getRealPlayer(p).score += p.movesLeft * 3; io.emit('gameLog', `⛪ ${p.name} 虔诚祈祷换分！`); p.movesLeft = 0; handleCombat(p); handleTileEvent(p); endTurn(); return; }
+        
+        let zKey = getZoneKey(p.x, p.y);
+        
+        if (zKey === 'church' && Math.random() < 0.6 && !classMission && activeGlobalEvents.sandstorm === 0) { 
+            rp.score += p.movesLeft * 3; io.emit('gameLog', `⛪ AI ${p.name} 虔诚祈祷，将剩余步数换成了积分！`); 
+            p.movesLeft = 0; handleCombat(p); handleTileEvent(p); endTurn(); return; 
+        }
+        if (zKey && ZONES[zKey].shop && p.score >= 50 && Math.random() < 0.4) {
+            let buyId = ZONES[zKey].shop[Math.floor(Math.random() * ZONES[zKey].shop.length)];
+            if (ITEMS[buyId].cost <= p.score && giveItem(p, buyId)) {
+                p.score -= ITEMS[buyId].cost; io.emit('gameLog', `🛒 AI ${p.name} 花钱购买了 [${ITEMS[buyId].name}]`); broadcastState();
+            }
+        }
+        if (zKey === 'fountain' && p.score >= 5 && Math.random() < 0.3) {
+            p.score -= 5; let r = Math.random(); 
+            if (r < 0.1) giveItem(p, 'cheat_sheet'); else if (r < 0.3) giveItem(p, 'water'); else if (r < 0.31) p.score += 50;
+            io.emit('gameLog', `⛲ AI ${p.name} 向喷泉抛出了硬币许愿！`); broadcastState();
+        }
+
+        if (rp.inventory['fruit'] && p.score < 50) {
+            rp.score += 3; rp.inventory['fruit']--; if (rp.inventory['fruit'] <= 0) delete rp.inventory['fruit'];
+            io.emit('gameLog', `🍒 AI ${p.name} 啃掉了一颗果实 (+3分)`);
+        }
+        ['star_block_1','star_block_2','star_block_3'].forEach(sb => {
+            if(rp.inventory[sb]) {
+                rp.score += 5; rp.questProgress.usedStarBlocks = (rp.questProgress.usedStarBlocks || 0) + 1;
+                rp.inventory[sb]--; if (rp.inventory[sb] <= 0) delete rp.inventory[sb];
+                io.emit('gameLog', `⭐ AI ${p.name} 拼接了星块 (+5分)`);
+                if (rp.questProgress.usedStarBlocks === 3) { rp.buffs.push('star_upgraded'); io.emit('gameLog', `✨ 奇迹绽放！AI ${p.name} 永久升级！`); }
+            }
+        });
+
+        // 🤖 思考 6：判定是否在“叛逆期”（故意逃课）
+        let isSkippingClass = activeSideQuests.find(q => q.type === 'skip_class');
+
+        if (rp.inventory['energy_drink'] && p.movesLeft === 1 && classMission && !isSkippingClass && (rp.drinksUsedThisTurn || 0) < 6) {
+            rp.drinksUsedThisTurn = (rp.drinksUsedThisTurn || 0) + 1; p.movesLeft += 3;
+            rp.inventory['energy_drink']--; if (rp.inventory['energy_drink'] <= 0) delete rp.inventory['energy_drink'];
+            io.emit('gameLog', `🥤 卷王 AI ${p.name} 发现上课快迟到了，猛喝一罐功能饮料狂奔 (步数+3)！`); broadcastState();
+        }
+
+       // 🤖 思考 7：终极寻路目标（包含支线精准坐标）
+        let targetZones = ['canteen', 'farm']; 
+        let targetPoints = []; 
+
+        if (activeGlobalEvents.sandstorm > 0 && !isSafeZone(p.x, p.y)) {
+            targetZones = ['female_dorm', 'male_dorm_n', 'male_dorm_s', 'intl_dorm', 'class_n', 'class_s', 'canteen', 'church'];
+        } else if (classMission && !isSkippingClass) {
+            targetZones = [classMission.target]; // 乖乖上课
+        } else {
+            // 没有紧急灾难，且不上课（或者正在故意逃课）
+            if (p.score >= 80 && p.score < 150) targetZones = ['supermarket', 'fountain', 'grocery', 'canteen'];
+            
+            // 🌟 支线任务雷达扫描
+            activeSideQuests.forEach(q => {
+                if (q.type === 'run') targetZones.push('stables');
+                if (q.type === 'panty') {
+                    if (rp.inventory['panty']) targetZones.push('intl_dorm');
+                    else { let it = groundItems.find(g => g.itemId === 'panty'); if(it) targetPoints.push({x: it.x, y: it.y}); }
+                }
+                if (q.type === 'mens_panty') {
+                    if (rp.inventory['mens_panty']) targetZones.push('male_dorm_n', 'male_dorm_s');
+                    else { let it = groundItems.find(g => g.itemId === 'mens_panty'); if(it) targetPoints.push({x: it.x, y: it.y}); }
+                }
+                if (q.type === 'harvest') {
+                    targetZones.push('farm');
+                    let fruits = groundItems.filter(g => g.itemId === 'fruit');
+                    fruits.forEach(f => targetPoints.push({x: f.x, y: f.y}));
+                }
+            });
+        }
+
+        let bestMove = null; let minScore = 999999;
         const dirs = [ {axis: 'x', dir: 1}, {axis: 'x', dir: -1}, {axis: 'y', dir: 1}, {axis: 'y', dir: -1} ].sort(() => Math.random() - 0.5);
-        let moved = false; for (let m of dirs) { if (doMove(cid, m.axis, m.dir)) { moved = true; break; } }
-        if (!moved) { p.movesLeft = 0; handleCombat(p); handleTileEvent(p); endTurn(); }
+
+        // 【新增变量】记录去目标的最佳格子，不考虑玩家
+        let bestPathMove = null; 
+        let minPathDistance = 999999;
+
+        for (let m of dirs) {
+            let nx = p.x + (m.axis === 'x' ? m.dir : 0); let ny = p.y + (m.axis === 'y' ? m.dir : 0);
+            if (nx < 0 || nx >= GRID_SIZE || ny < 0 || ny >= GRID_SIZE) continue;
+            let tz = getZoneKey(nx, ny); let isLock = (dayPhaseIndex >= 5); let can = true;
+            if (tz === 'female_dorm' && isLock && p.gender === 'male' && p.role !== 'yyj') can = false;
+            else if ((tz === 'male_dorm_n' || tz === 'male_dorm_s') && isLock && p.gender === 'female' && p.role !== 'myj') can = false;
+            if (activeGlobalEvents.flood > 0 && activeGlobalEvents.flood < 3 && p.role !== 'zxw') { if (waterWalls.find(w => w.x === nx && w.y === ny)) can = false; }
+            if (!can) continue;
+
+            let dangerPenalty = 0;
+            if (boars.find(b => b.x === nx && b.y === ny)) dangerPenalty += 1000;
+            if (guards.find(g => g.x === nx && g.y === ny)) dangerPenalty += 800;
+            if (traps.find(t => t.x === nx && t.y === ny && t.ownerId !== p.playerId)) dangerPenalty += 500;
+
+            let minDistToTarget = 999;
+            // 距离评估：区域
+            for (let z of targetZones) {
+                if (!ZONES[z]) continue; let r = ZONES[z].range;
+                if (nx >= r[0] && nx <= r[1] && ny >= r[2] && ny <= r[3]) { minDistToTarget = 0; break; }
+                let cx = Math.floor((r[0]+r[1])/2); let cy = Math.floor((r[2]+r[3])/2);
+                let dist = Math.abs(nx - cx) + Math.abs(ny - cy);
+                if (dist < minDistToTarget) minDistToTarget = dist;
+            }
+            // 距离评估：精准点位
+            for (let pt of targetPoints) {
+                let dist = Math.abs(nx - pt.x) + Math.abs(ny - pt.y);
+                if (dist < minDistToTarget) minDistToTarget = dist;
+            }
+
+            // 【专注赶路逻辑】：先纯粹寻找离目标最近的路，不受玩家干扰
+            let pathScore = minDistToTarget + dangerPenalty;
+            if (pathScore < minPathDistance) {
+                minPathDistance = pathScore;
+                bestPathMove = m;
+            }
+        }
+
+        // 决定最终怎么走
+        if (bestPathMove) {
+            let nextX = p.x + (bestPathMove.axis === 'x' ? bestPathMove.dir : 0);
+            let nextY = p.y + (bestPathMove.axis === 'y' ? bestPathMove.dir : 0);
+            
+            // 检查这唯一一条“必经之路”上有没有人
+            let targetPlayerOnPath = Object.values(players).find(e => e.x === nextX && e.y === nextY && e.playerId !== p.playerId && !e.isSummon);
+            
+            if (targetPlayerOnPath) {
+                // 如果有人挡路，判断打不打得过
+                if (p.str > targetPlayerOnPath.str) {
+                    // 打得过，顺手揍他，路线不变！
+                    bestMove = bestPathMove;
+                    io.emit('gameLog', `👊 AI ${p.name} 在赶路途中顺手揍了挡路的 ${targetPlayerOnPath.name}！`);
+                } else {
+                    // 打不过，被迫选择其他安全的路线绕开
+                    // 这里简化处理：直接从 dir 数组里找一个没有强敌且安全的次优解
+                    for (let altMove of dirs) {
+                        if(altMove === bestPathMove) continue; // 跳过刚才那条有强敌的路
+                        let ax = p.x + (altMove.axis === 'x' ? altMove.dir : 0);
+                        let ay = p.y + (altMove.axis === 'y' ? altMove.dir : 0);
+                        let altEnemy = Object.values(players).find(e => e.x === ax && e.y === ay && e.playerId !== p.playerId && !e.isSummon);
+                        // 寻找一条没有比自己强的敌人，且不踩陷阱野猪的路
+                        if (!altEnemy || p.str > altEnemy.str) {
+                             bestMove = altMove;
+                             break;
+                        }
+                    }
+                }
+            } else {
+                // 必经之路上没人，专心走最优路线
+                bestMove = bestPathMove;
+            }
+        }
+
+
+        if (bestMove && doMove(cid, bestMove.axis, bestMove.dir)) {
+            // 移动成功
+        } else {
+            p.movesLeft = 0; handleCombat(p); handleTileEvent(p); endTurn();
+        }
     }
 }
 
@@ -436,7 +654,18 @@ function handleTileEvent(p) {
     if (!z) return;
     if (ZONES[z].drop && Math.random() < ZONES[z].drop.rate) { if(giveItem(rp, ZONES[z].drop.id)) io.emit('gameLog', `🎁 捡到 [${ITEMS[ZONES[z].drop.id].name}]`); }
     if (p.role === 'myj' && z.includes('dorm') && Math.random() < 0.5) { if(giveItem(rp, 'lipstick')) io.emit('gameLog', `💄 在寝室翻到了魅惑口红！`); }
-    if (['canteen', 'farm'].includes(z)) { let earn = p.str*2 + p.int*2; rp.score += earn; io.emit('gameLog', `💰 打工 +${earn}分`); }
+    if (['canteen', 'farm'].includes(z)) { 
+        let earn = p.str*2 + p.int*2; 
+        
+        // 🍜 检查是否为 cyx 且处于面条形态(阶段1)
+        if (rp.role === 'cyx' && rp.cyxForm === 1) {
+            earn = Math.floor(earn / 2); // 收益直接减半，向下取整
+            io.emit('gameLog', `🍜 面条软弱无力...打工收益减半！`); // 顺便加个趣味提示
+        }
+        
+        rp.score += earn; 
+        io.emit('gameLog', `💰 打工 +${earn}分`); 
+    }
 }
 
 function checkWinCondition() {
@@ -449,7 +678,6 @@ function checkWinCondition() {
     }
 }
 
-// === 核心新增：检查全员内卷导致被迫进化 ===
 function checkCyxForcedEvolution() {
     let realPlayers = Object.values(players).filter(p => !p.isSummon);
     if (realPlayers.length === 0) return;
@@ -478,7 +706,7 @@ function checkCyxForcedEvolution() {
 
 function broadcastState() { 
     checkWinCondition(); 
-    checkCyxForcedEvolution(); // 在每次广播前，都检查一次是否触发被迫进化
+    checkCyxForcedEvolution(); 
     let taken = Object.values(players).map(p => p.role); 
     io.emit('updateState', { players, currentTurnId: playerIds[currentTurnIndex], turnPhase, globalRound, classMission, traps, plantedSeeds, groundItems, activeSideQuests, takenRoles: taken, activeGlobalEvents, boars, guards, waterWalls, dayPhaseIndex, timeOfDay: TIME_PHASES[dayPhaseIndex] || '早晨', weatherEffect, targetScore, gameOver, winnerName: winner ? winner.name : null }); 
 }

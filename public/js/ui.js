@@ -1,4 +1,29 @@
-// public/js/ui.js - v26.1: 所有的界面操作与按钮事件 (安全加载头像)
+// public/js/ui.js - v26.2: 所有的界面操作与按钮事件 (支持卡通/真人双重头像UI)
+
+// 辅助函数：根据当前状态获取正确的头像URL和背景色设置
+function getAvatarStyle(rConfig, customRealImgName = null) {
+    let realImg = customRealImgName || rConfig?.img;
+    let cartoonImg = rConfig?.cartoonImg;
+    
+    let finalUrl = null;
+    let useImage = false;
+
+    if (unlockAvatars && realImg) {
+        finalUrl = `/api/avatar/${realImg}?key=${currentSecretKey}`;
+        useImage = true;
+    } else if (cartoonImg) {
+        finalUrl = `/cartoon_avatars/${cartoonImg}`;
+        useImage = true;
+    }
+
+    return {
+        backgroundImage: useImage ? `url('${finalUrl}')` : 'none',
+        backgroundColor: useImage ? 'transparent' : (rConfig?.color || '#333'), // 用图片时背景透明，否则用角色色块
+        text: useImage ? '' : (rConfig?.name[0].toUpperCase() || '?')
+    };
+}
+
+// 1. 重置游戏按钮
 const restartBtn = document.createElement('button');
 restartBtn.innerHTML = '🔄 重置游戏';
 restartBtn.style.cssText = 'position:absolute; top:20px; right:20px; padding:10px 15px; background:#c0392b; color:white; border:none; border-radius:8px; cursor:pointer; font-weight:bold; z-index:999999; box-shadow:0 4px 10px rgba(0,0,0,0.5); transition:0.2s;';
@@ -7,6 +32,7 @@ restartBtn.onmouseout = () => restartBtn.style.background = '#c0392b';
 restartBtn.onclick = () => { if(confirm('⚠️ 警告：确定要直接重置当前对局吗？')) socket.emit('restartGame'); };
 document.body.appendChild(restartBtn);
 
+// 2. CYX 的专属操作按钮
 const cyxEvolveBtn = document.createElement('button');
 cyxEvolveBtn.id = 'cyx-evolve-btn';
 cyxEvolveBtn.style.cssText = 'padding:10px 15px; background:linear-gradient(45deg, #f39c12, #e67e22); color:white; border:none; border-radius:8px; font-weight:bold; cursor:pointer; margin-right:8px; display:none; box-shadow:0 0 10px rgba(243, 156, 18, 0.5);';
@@ -21,24 +47,24 @@ cyxTeleportBtn.onclick = () => startTargetSelection(null, 999, 'cyxTeleport');
 abilityBtn.parentNode.insertBefore(cyxEvolveBtn, abilityBtn.nextSibling);
 abilityBtn.parentNode.insertBefore(cyxTeleportBtn, cyxEvolveBtn.nextSibling);
 
+// 3. 大厅与房间设置按钮
 btnSetScore.onclick = () => { let s = parseInt(targetScoreInput.value); if (!isNaN(s) && s > 0) socket.emit('setTargetScore', s); };
-unlockDevBtn.onclick = () => { if(devCodeInput.value === '114514') { devControls.style.display = 'block'; devCodeInput.style.display = 'none'; unlockDevBtn.style.display = 'none'; } };
-startAutoBtn.onclick = () => { socket.emit('startAutoRun', { code: '114514', count: parseInt(document.getElementById('bot-count').value) || 4 }); };
+btnAddBots.onclick = () => { let count = parseInt(document.getElementById('bot-count').value) || 3; if(confirm(`确定要在场上添加 ${count} 个 AI 玩家吗？`)) { socket.emit('addBots', count); } };
 
-rollBtn.onclick = () => socket.emit('rollDice'); endBtn.onclick = () => socket.emit('endTurn');
-trapBtn.onclick = () => socket.emit('placeTrap'); controlBtn.onclick = () => startControlSelection(); abilityBtn.onclick = () => socket.emit('useAbility');
-prayBtn.onclick = () => { if(confirm('要将剩余的所有步数转换为三倍积分吗？')) socket.emit('pray'); };
+// 4. 行动按钮绑定
+rollBtn.onclick = () => socket.emit('rollDice'); 
+endBtn.onclick = () => socket.emit('endTurn'); 
+trapBtn.onclick = () => socket.emit('placeTrap'); 
+controlBtn.onclick = () => startControlSelection(); 
+abilityBtn.onclick = () => socket.emit('useAbility'); 
+prayBtn.onclick = () => { if(confirm('要将剩余的所有步数转换为三倍积分吗？')) socket.emit('pray'); }; 
 if(horseBtn) horseBtn.onclick = () => { if(confirm('确定消耗剩余步数牵走一匹马吗？')) socket.emit('getHorse'); };
 
 function requestMove(axis, dir) { if (!players[myId] || currentTurnId !== myId || turnPhase !== 'MOVING') return; socket.emit('playerMovement', { axis: axis, dir: dir }); }
-document.addEventListener('keydown', (e) => { 
-    if(document.activeElement.id === 'chat-input') return;
-    const k = {'ArrowLeft':{x:'x',d:-1},'ArrowRight':{x:'x',d:1},'ArrowUp':{x:'y',d:-1},'ArrowDown':{x:'y',d:1}}; 
-    if (k[e.key]) requestMove(k[e.key].x, k[e.key].d); 
-});
-document.getElementById('btn-up').onclick = () => requestMove('y', -1); document.getElementById('btn-down').onclick = () => requestMove('y', 1);
-document.getElementById('btn-left').onclick = () => requestMove('x', -1); document.getElementById('btn-right').onclick = () => requestMove('x', 1);
+document.addEventListener('keydown', (e) => { if(document.activeElement.id === 'chat-input') return; const k = {'ArrowLeft':{x:'x',d:-1},'ArrowRight':{x:'x',d:1},'ArrowUp':{x:'y',d:-1},'ArrowDown':{x:'y',d:1}}; if (k[e.key]) requestMove(k[e.key].x, k[e.key].d); });
+document.getElementById('btn-up').onclick = () => requestMove('y', -1); document.getElementById('btn-down').onclick = () => requestMove('y', 1); document.getElementById('btn-left').onclick = () => requestMove('x', -1); document.getElementById('btn-right').onclick = () => requestMove('x', 1);
 
+// 5. 图鉴与UI系统
 document.getElementById('btn-codex').onclick = () => {
     const modal = document.getElementById('codex-modal'); modal.style.display = 'flex';
     modal.innerHTML = `
@@ -74,13 +100,12 @@ window.renderManualTab = function(tabName) {
             let i = itemsInfo[k]; html += `<div class="man-item"><div style="font-size: 32px; width:40px; text-align:center;">${i.icon}</div><div style="flex:1;"><h4 style="margin:0 0 5px 0; color:#fff;">${i.name} <span style="font-size:11px; float:right; background:#e67e22; padding:2px 6px; border-radius:3px;">${i.cost > 0 ? i.cost+'分' : '不可购买'}</span></h4><span style="font-size:13px; color:#bdc3c7;">${i.desc}</span></div></div>`;
         }
     } else if (tabName === 'roles') {
+        // === 修改：图鉴列表应用新头像逻辑 ===
         html = '<h3 style="color:#f1c40f; margin-top:0;">🧑‍🎓 人物图鉴 (点击查看详情)</h3><div style="display:flex; flex-wrap:wrap; gap:15px;">';
         for (let key in rolesConfig) {
             let r = rolesConfig[key]; 
-            // === 核心修改：图鉴小头像带上密钥 ===
-            let bg = (unlockAvatars && r.img) ? `url('/api/avatar/${r.img}?key=${currentSecretKey}')` : 'none'; 
-            let txt = (!unlockAvatars || !r.img) ? r.name[0].toUpperCase() : '';
-            html += `<div onclick="renderRoleDetail('${key}')" title="${unlockAvatars ? r.name : '???'}" style="width:70px; height:70px; border-radius:10px; background-color:${r.color}; background-image:${bg}; background-size:cover; background-position:center; cursor:pointer; border:3px solid rgba(255,255,255,0.8); display:flex; justify-content:center; align-items:center; font-size:30px; font-weight:bold; color:white; transition:0.2s;" onmouseover="this.style.transform='scale(1.1)'; this.style.borderColor='gold';" onmouseout="this.style.transform='scale(1)'; this.style.borderColor='rgba(255,255,255,0.8)';">${txt}</div>`;
+            let style = getAvatarStyle(r);
+            html += `<div onclick="renderRoleDetail('${key}')" title="${r.name}" style="width:70px; height:70px; border-radius:10px; background-color:${style.backgroundColor}; background-image:${style.backgroundImage}; background-size:cover; background-position:center; cursor:pointer; border:3px solid rgba(255,255,255,0.8); display:flex; justify-content:center; align-items:center; font-size:30px; font-weight:bold; color:white; transition:0.2s;" onmouseover="this.style.transform='scale(1.1)'; this.style.borderColor='gold';" onmouseout="this.style.transform='scale(1)'; this.style.borderColor='rgba(255,255,255,0.8)';">${style.text}</div>`;
         }
         html += '</div>';
     }
@@ -88,11 +113,10 @@ window.renderManualTab = function(tabName) {
 };
 
 window.renderRoleDetail = function(key) {
+    // === 修改：图鉴详情页应用新头像逻辑 ===
     let r = rolesConfig[key]; 
-    // === 核心修改：图鉴大头像带上密钥 ===
-    let bg = (unlockAvatars && r.img) ? `url('/api/avatar/${r.img}?key=${currentSecretKey}')` : 'none'; 
-    let txt = (!unlockAvatars || !r.img) ? r.name[0].toUpperCase() : '';
-    document.getElementById('manual-content').innerHTML = `<button onclick="renderManualTab('roles')" style="margin-bottom:20px; padding:8px 15px; background:#7f8c8d; color:white; border:none; border-radius:5px; cursor:pointer; font-weight:bold; transition:0.2s;" onmouseover="this.style.background='#95a5a6'" onmouseout="this.style.background='#7f8c8d'">⬅ 返回角色列表</button><div style="display:flex; gap:25px; align-items:flex-start; background:rgba(0,0,0,0.3); padding:25px; border-radius:10px; box-shadow:inset 0 0 20px rgba(0,0,0,0.5);"><div style="min-width:120px; height:120px; border-radius:15px; background-color:${r.color}; background-image:${bg}; background-size:cover; background-position:center; border:4px solid #fff; display:flex; justify-content:center; align-items:center; font-size:50px; font-weight:bold; color:white; box-shadow: 0 0 15px ${r.color};">${txt}</div><div style="flex:1;"><h2 style="margin:0 0 10px 0; color:${r.color}; font-size:26px; text-shadow: 1px 1px 3px black;">${r.name}</h2><div style="font-size:16px; color:#2ecc71; margin-bottom:15px; font-weight:bold; background:#1a252f; display:inline-block; padding:8px 12px; border-radius:5px; border-left:4px solid #2ecc71;">❤️ 体力: ${r.str} &nbsp;&nbsp;|&nbsp;&nbsp; 🧠 智力: ${r.int}</div><p style="color:#ecf0f1; line-height:1.7; font-size:16px; margin:0; background:rgba(255,255,255,0.05); padding:15px; border-radius:8px;">${r.desc}</p></div></div>`;
+    let style = getAvatarStyle(r);
+    document.getElementById('manual-content').innerHTML = `<button onclick="renderManualTab('roles')" style="margin-bottom:20px; padding:8px 15px; background:#7f8c8d; color:white; border:none; border-radius:5px; cursor:pointer; font-weight:bold; transition:0.2s;" onmouseover="this.style.background='#95a5a6'" onmouseout="this.style.background='#7f8c8d'">⬅ 返回角色列表</button><div style="display:flex; gap:25px; align-items:flex-start; background:rgba(0,0,0,0.3); padding:25px; border-radius:10px; box-shadow:inset 0 0 20px rgba(0,0,0,0.5);"><div style="min-width:120px; height:120px; border-radius:15px; background-color:${style.backgroundColor}; background-image:${style.backgroundImage}; background-size:cover; background-position:center; border:4px solid #fff; display:flex; justify-content:center; align-items:center; font-size:50px; font-weight:bold; color:white; box-shadow: 0 0 15px ${r.color};">${style.text}</div><div style="flex:1;"><h2 style="margin:0 0 10px 0; color:${r.color}; font-size:26px; text-shadow: 1px 1px 3px black;">${r.name}</h2><div style="font-size:16px; color:#2ecc71; margin-bottom:15px; font-weight:bold; background:#1a252f; display:inline-block; padding:8px 12px; border-radius:5px; border-left:4px solid #2ecc71;">❤️ 体力: ${r.str} &nbsp;&nbsp;|&nbsp;&nbsp; 🧠 智力: ${r.int}</div><p style="color:#ecf0f1; line-height:1.7; font-size:16px; margin:0; background:rgba(255,255,255,0.05); padding:15px; border-radius:8px;">${r.desc}</p></div></div>`;
 };
 
 function renderScoreboard() {
@@ -117,20 +141,15 @@ function updateUI(state) {
         if (p.role === 'hedi') { renderScoreboard(); } else { spectatorScoreboard.style.display = 'none'; }
         
         let displayP = p.activeEntity === 'zjy' ? players[p.zjyId] : p; let rConfig = rolesConfig[displayP.role];
-        let customImg = (displayP.role === 'cyx') ? `cyx_${displayP.cyxForm}.png` : rConfig.img;
+        
+        // === 修改：左上角主界面应用新头像逻辑 ===
+        let customRealImg = (displayP.role === 'cyx') ? `cyx_${displayP.cyxForm}.png` : null;
+        let style = getAvatarStyle(rConfig, customRealImg);
 
         playerAvatarDiv.style.display = 'flex'; playerAvatarDiv.style.justifyContent = 'center'; playerAvatarDiv.style.alignItems = 'center'; playerAvatarDiv.style.fontSize = '36px'; playerAvatarDiv.style.fontWeight = 'bold'; playerAvatarDiv.style.color = 'white'; playerAvatarDiv.style.borderColor = displayP.color;
-        
-        // === 核心修改：左上角玩家大头像带上密钥 ===
-        if (unlockAvatars && customImg) { 
-            playerAvatarDiv.style.backgroundImage = `url('/api/avatar/${customImg}?key=${currentSecretKey}')`; 
-            playerAvatarDiv.style.backgroundColor = 'transparent'; 
-            playerAvatarDiv.innerText = ''; 
-        } else { 
-            playerAvatarDiv.style.backgroundImage = 'none'; 
-            playerAvatarDiv.style.backgroundColor = displayP.color || '#333'; 
-            playerAvatarDiv.innerText = displayP.name[0].toUpperCase(); 
-        }
+        playerAvatarDiv.style.backgroundImage = style.backgroundImage;
+        playerAvatarDiv.style.backgroundColor = style.backgroundColor;
+        playerAvatarDiv.innerText = style.text;
         
         playerAvatarName.innerText = displayP.name; playerAvatarName.style.color = displayP.color; roleName.innerText = `我: ${p.name}`; roleName.style.color = p.color || '#fff'; roleStats.innerText = `体:${p.str} 智:${p.int} 💰:${p.score}`;
         
@@ -158,11 +177,25 @@ function updateUI(state) {
 
 function renderRoleSelection() {
     roleButtonsContainer.innerHTML = '';
+    roleButtonsContainer.style.flexDirection = 'row'; roleButtonsContainer.style.flexWrap = 'wrap'; roleButtonsContainer.style.justifyContent = 'center'; roleButtonsContainer.style.gap = '10px'; roleButtonsContainer.style.padding = '5px 0';
     for (let key in rolesConfig) {
         if(key === 'zjy') continue; 
-        let r = rolesConfig[key]; let isTaken = takenRoles.includes(key); let btn = document.createElement('button');
-        btn.className = 'role-btn'; btn.innerHTML = `<span style="color:${r.color}; font-weight:bold;">${r.name}</span><br><span style="font-size:11px;">${r.desc}</span>`;
-        if (isTaken) { btn.disabled = true; btn.innerHTML = `已占用: ${r.name}`; } else { btn.onclick = () => { socket.emit('selectRole', key); }; }
+        let r = rolesConfig[key]; let isTaken = takenRoles.includes(key); 
+        
+        // === 修改：选人界面应用新头像逻辑 ===
+        let style = getAvatarStyle(r);
+        let btn = document.createElement('div');
+        btn.style.cssText = `width: 52px; height: 52px; border-radius: 8px; background-color: ${style.backgroundColor}; background-image: ${style.backgroundImage}; background-size: cover; background-position: center; display: flex; justify-content: center; align-items: center; font-size: 24px; font-weight: bold; color: white; border: 2px solid rgba(255,255,255,0.8); transition: 0.2s; position: relative;`;
+        btn.innerHTML = style.text;
+
+        if (isTaken) {
+            btn.style.filter = 'grayscale(100%) opacity(0.3)'; btn.style.cursor = 'not-allowed'; btn.title = `已占用: ${r.name}`;
+        } else {
+            btn.style.cursor = 'pointer'; btn.title = `${r.name} (详细技能请查看左侧图鉴)`;
+            btn.onmouseover = () => { btn.style.transform = 'scale(1.15)'; btn.style.borderColor = 'gold'; btn.style.boxShadow = `0 0 12px ${r.color}`; };
+            btn.onmouseout = () => { btn.style.transform = 'scale(1)'; btn.style.borderColor = 'rgba(255,255,255,0.8)'; btn.style.boxShadow = 'none'; };
+            btn.onclick = () => { if(confirm(`确定要选择【${r.name}】加入校园吗？\n(如果不熟悉该角色，可先在左侧图鉴查看技能)`)) { socket.emit('selectRole', key); } };
+        }
         roleButtonsContainer.appendChild(btn);
     }
 }
@@ -170,7 +203,6 @@ function renderRoleSelection() {
 function updateBuffs(p) { buffContainer.innerHTML = ''; if (p.buffs?.includes('immune_heat')) { let d = document.createElement('div'); d.className = 'buff-icon'; d.innerText = '🧊'; d.title = '免疫炎热'; buffContainer.appendChild(d); } if (p.buffs?.includes('immune_cold')) { let d = document.createElement('div'); d.className = 'buff-icon'; d.innerText = '🔥'; d.title = '免疫寒冷'; buffContainer.appendChild(d); } if (p.buffs?.includes('star_upgraded')) { let d = document.createElement('div'); d.className = 'buff-icon'; d.innerText = '✨'; d.title = '永远+1'; buffContainer.appendChild(d); } if (p.buffs?.includes('bright')) { let d = document.createElement('div'); d.className = 'buff-icon'; d.innerText = '🔦'; d.title = '明亮(破除迷雾)'; buffContainer.appendChild(d); } }
 function renderInventory(inv, isMyTurn) { invContainer.innerHTML = ''; for(let i=0; i<5; i++) { let id = Object.keys(inv)[i]; let d = document.createElement('div'); d.className = 'inv-slot'; if (id) { let info = itemsInfo[id]; d.innerHTML = `<div style="font-size:20px">${info.icon}</div><div class="inv-count">x${inv[id]}</div>`; d.title = info.desc; if (isMyTurn) d.onclick = () => handleItemClick(id, info); } invContainer.appendChild(d); } }
 function handleItemClick(id, info) { if (info.type === 'attack' || info.type === 'steal' || info.type === 'report' || info.type === 'phone') startTargetSelection(id, info.range, 'item'); else if (info.type === 'passive') alert('被动道具，自动生效'); else if(confirm(`使用 ${info.name}?`)) socket.emit('useItem', { itemId: id }); }
-
 function startTargetSelection(idOrType, range, mode) {
     selectionMode = mode; targetOverlay.innerHTML = ''; targetOverlay.style.display = 'block'; targetTip.style.display = 'block'; targetTip.innerText = mode === 'control' ? '🔮 选择操控的傀儡' : `👀 选择目标`;
     let me = players[myId]; if(me.activeEntity === 'zjy') me = players[me.zjyId]; let amI_bright = me.buffs?.includes('bright');
@@ -235,17 +267,16 @@ function initChatUI() {
     chatUI.style.cssText = "position:absolute; bottom:20px; left:20px; width:320px; background:rgba(44,62,80,0.85); padding:12px; border-radius:10px; border:2px solid #34495e; z-index:100; box-shadow: 0 4px 15px rgba(0,0,0,0.5);"; document.body.appendChild(chatUI);
     document.getElementById('chat-send').onclick = sendChat; document.getElementById('chat-input').addEventListener('keypress', (e) => { if(e.key === 'Enter') sendChat(); });
     
-    // === 核心修改：记录与清除密码逻辑 ===
     document.getElementById('btn-unlock-avatar').onclick = () => { 
         if (unlockAvatars) { 
             unlockAvatars = false; 
-            currentSecretKey = ''; // 清除密码
+            currentSecretKey = ''; 
             alert('🔒 已恢复隐私模式。'); 
         } else { 
             let key = prompt('请输入图鉴与头像解锁密钥:'); 
             if(key === 'tuxiangtian') { 
                 unlockAvatars = true; 
-                currentSecretKey = key; // 保存密码
+                currentSecretKey = key; 
                 alert('✅ 验证成功，世界已对你敞开！'); 
             } else if(key !== null) { 
                 alert('❌ 密钥错误'); 
@@ -264,9 +295,8 @@ function renderChat() {
     let msgs = document.getElementById('chat-messages'); msgs.innerHTML = '';
     chatHistory.forEach(data => {
         let r = rolesConfig[data.role]; 
-        // === 核心修改：聊天记录小头像带上密钥 ===
-        let bg = (unlockAvatars && r && r.img) ? `url('/api/avatar/${r.img}?key=${currentSecretKey}')` : 'none'; 
-        let txt = (!unlockAvatars || !r || !r.img) ? data.name[0].toUpperCase() : '';
-        msgs.innerHTML += `<div style="display:flex; gap:8px; align-items:flex-start;"><div style="min-width:30px; height:30px; border-radius:5px; background-color:${data.color}; background-image:${bg}; background-size:cover; background-position:center; border:2px solid rgba(255,255,255,0.8); display:flex; justify-content:center; align-items:center; font-size:16px; font-weight:bold; color:white;">${txt}</div><div style="background:rgba(0,0,0,0.5); padding:6px 10px; border-radius:6px; color:white; word-break:break-all; flex:1;"><span style="color:${data.color}; font-weight:bold; font-size:12px;">${data.name}</span><br><span style="font-size:13px; line-height:1.4;">${data.text}</span></div></div>`;
+        // === 修改：聊天记录应用新头像逻辑 ===
+        let style = getAvatarStyle(r);
+        msgs.innerHTML += `<div style="display:flex; gap:8px; align-items:flex-start;"><div style="min-width:30px; height:30px; border-radius:5px; background-color:${style.backgroundColor}; background-image:${style.backgroundImage}; background-size:cover; background-position:center; border:2px solid rgba(255,255,255,0.8); display:flex; justify-content:center; align-items:center; font-size:16px; font-weight:bold; color:white;">${style.text}</div><div style="background:rgba(0,0,0,0.5); padding:6px 10px; border-radius:6px; color:white; word-break:break-all; flex:1;"><span style="color:${data.color}; font-weight:bold; font-size:12px;">${data.name}</span><br><span style="font-size:13px; line-height:1.4;">${data.text}</span></div></div>`;
     }); msgs.scrollTop = msgs.scrollHeight; 
 }

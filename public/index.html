@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>校园争霸赛 v18.0</title>
+    <title>校园争霸赛 v26.1 - PVE单机模式开启</title>
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -85,21 +85,20 @@
                 <div style="font-size:12px; margin-bottom:5px;">当前目标: <span id="current-target-score" style="color:#2ecc71;">无限制</span></div>
                 <input type="number" id="target-score-input" placeholder="分数(例:300)" style="width:70px; padding:3px; background:#2c3e50; border:1px solid #aaa; color:white; border-radius:3px;">
                 <button id="btn-set-score" class="btn" style="background:#27ae60; font-size:12px; padding: 4px 8px;">设定</button>
+                
+                <div style="margin-top:10px; border-top: 1px dashed #7f8c8d; padding-top:10px;">
+                    <span style="color:#3498db; font-size:13px; font-weight:bold;">🤖 单机 PVE 模式</span><br>
+                    <span style="font-size:11px; color:#bdc3c7;">选好角色后，填充 AI 对手：</span><br>
+                    <div style="margin-top: 5px; display:flex; justify-content:center; gap:5px;">
+                        <input type="number" id="bot-count" value="3" min="1" max="10" style="width:40px; background:#2c3e50; color:white; border:1px solid #aaa; padding:2px; border-radius:3px; text-align:center;">
+                        <button id="btn-add-bots" class="btn" style="background:#8e44ad; font-size:12px; padding: 4px 8px;">生成 AI</button>
+                    </div>
+                </div>
             </div>
 
             <div id="role-selection">
                 <div style="text-align:center; font-weight:bold; font-size:14px; margin-top:5px;">选择角色加入游戏</div>
-                <div id="role-buttons-container" style="display:flex; flex-direction:column; gap:5px; max-height: 200px; overflow-y:auto; margin-top:5px;"></div>
-                <div style="margin-top: 10px; padding: 10px; background: rgba(0,0,0,0.3); border-radius: 5px; text-align: center;">
-                    <input type="password" id="dev-code" placeholder="输入密钥" style="width:80px; padding:3px; background:#2c3e50; border:1px solid #aaa; color:white; border-radius:3px;">
-                    <button id="btn-unlock-dev" class="btn" style="background:#e67e22;">验证</button>
-                    <div id="dev-controls" style="display:none; margin-top:10px;">
-                        <span style="color:gold; font-size:12px;">🛠️ 斗蛐蛐模式已解锁</span><br>
-                        <span style="font-size:12px;">AI数量:</span> 
-                        <input type="number" id="bot-count" value="4" min="1" max="10" style="width:40px; background:#2c3e50; color:white; border:1px solid #aaa; padding:2px; border-radius:3px;">
-                        <button id="btn-start-auto" class="btn" style="background:#c0392b; margin-top:5px; width:100%;">🚀 开始挂机</button>
-                    </div>
-                </div>
+                <div id="role-buttons-container" style="display:flex; flex-direction:column; gap:5px; max-height: 250px; overflow-y:auto; margin-top:5px;"></div>
             </div>
             
             <div id="spectator-scoreboard" style="display:none; margin-top:15px; border-top: 1px solid #aaa; padding-top: 10px;">

@@ -1,4 +1,6 @@
-// public/js/render.js - v26.1: 游戏场景渲染引擎 (安全加载头像)
+// public/js/render.js - v26.2: 游戏场景渲染引擎 (支持卡通/真人双重头像)
+const nameCache = {}; 
+
 function draw() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     if (mapLoaded) { ctx.globalAlpha = 0.8; ctx.drawImage(mapImage, 0, 0, canvas.width, canvas.height); ctx.globalAlpha = 1.0; }
@@ -33,19 +35,32 @@ function draw() {
         if(id === hl) { ctx.strokeStyle="#f1c40f"; ctx.lineWidth=3; ctx.strokeRect(px, py, 32, 32); }
         if (p.isSummon) { ctx.fillStyle="rgba(255,255,255,0.5)"; ctx.fillRect(px+4, py+4, 24, 24); }
 
+        // 绘制底色背景（如果卡通图是透明的，底色会透出来）
         ctx.fillStyle = p.color || '#fff'; if (p.isJailed) ctx.fillStyle="#7f8c8d"; ctx.fillRect(px+4, py+4, 24, 24);
         
         let r = rolesConfig[p.role];
-        let customImg = (p.role === 'cyx') ? `cyx_${p.cyxForm}.png` : r?.img;
-        
-        // === 核心修改：向后端接口发送带密钥的图片请求 ===
-        if (unlockAvatars && customImg) {
+        let realImgPath = (p.role === 'cyx') ? `cyx_${p.cyxForm}.png` : r?.img;
+        // === 核心修改：双重头像判断逻辑 ===
+        let finalImgUrl = null;
+
+        if (unlockAvatars && realImgPath) {
+            // 情况1：已解锁，显示私密真人照
+            finalImgUrl = `/api/avatar/${realImgPath}?key=${currentSecretKey}`;
+        } else if (r && r.cartoonImg) {
+            // 情况2：未解锁，但配置了卡通照，显示卡通照
+            finalImgUrl = `/cartoon_avatars/${r.cartoonImg}`;
+        }
+
+        if (finalImgUrl) {
+            // 绘制图片（这里为了简化使用了低性能的即时加载，生产环境建议预加载）
             let imgObj = new Image(); 
-            imgObj.src = `/api/avatar/${customImg}?key=${currentSecretKey}`;
+            imgObj.src = finalImgUrl;
             ctx.drawImage(imgObj, px+4, py+4, 24, 24);
         } else {
+            // 情况3：既没解锁也没卡通照（保底），显示色块首字母
             ctx.fillStyle="white"; ctx.font="bold 10px Arial"; ctx.textAlign="center"; ctx.strokeStyle="black"; ctx.lineWidth=2;
-            ctx.strokeText(p.name.split(' ')[0], px+16, py+32); ctx.fillText(p.name.split(' ')[0], px+16, py+32);
+            let shortName = p.name.split(' ')[0];
+            ctx.strokeText(shortName, px+16, py+32); ctx.fillText(shortName, px+16, py+32);
         }
         
         if (players[currentTurnId] && players[currentTurnId].isControlling === id) { ctx.strokeStyle = "purple"; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(px+16, py); ctx.lineTo(px+16, py-20); ctx.stroke(); ctx.font="12px Arial"; ctx.fillText("🔮", px+16, py-22); }

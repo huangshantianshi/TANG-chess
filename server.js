@@ -31,5 +31,5 @@ io.on('connection', (socket) => {
 });
 
 server.listen(3000, () => {
-    console.log('✅ v26.0 服务器已启动！(含服务器级图片加密)');
+    console.log('✅ 26.1 - PVE单机模式开启');
 });
